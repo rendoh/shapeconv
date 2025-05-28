@@ -172,3 +172,61 @@ h1 {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   overflow-x: auto;
 }
+
+.preview-clippath {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%);
+  border-radius: 16px;
+  border: 1px solid #f59e0b;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.preview-clippath h4 {
+  margin-top: 0;
+  color: #92400e;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.clippath-demo-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 2rem;
+  border: 2px dashed #d1d5db;
+}
+
+.clippath-demo {
+  width: 150px;
+  height: 150px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  position: relative;
+  z-index: 2;
+}
+
+.clippath-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.clippath-outline {
+  width: 150px;
+  height: 150px;
+  background: transparent;
+  border: 3px solid #ef4444;
+  opacity: 0.7;
+  position: absolute;
+  z-index: 3;
+}
