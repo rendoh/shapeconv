@@ -11,6 +11,7 @@ function App() {
   const [shapeResult, setShapeResult] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [usePercentage, setUsePercentage] = useState<boolean>(true);
+  const [normalizeAspectRatio, setNormalizeAspectRatio] = useState<boolean>(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const parseSVGPath = (pathData: string): PathCommand[] => {
@@ -57,12 +58,36 @@ function App() {
     let subpathStartY = 0;
 
     const formatCoordinate = (x: number, y: number): string => {
-      if (usePercentage) {
-        const xPercent = (x / svgDimensions.width * 100).toFixed(2);
-        const yPercent = (y / svgDimensions.height * 100).toFixed(2);
-        return `${xPercent}% ${yPercent}%`;
+      let normalizedX = x;
+      let normalizedY = y;
+      
+      if (normalizeAspectRatio) {
+        // アスペクト比を1:1に正規化し、中央配置
+        const maxDimension = Math.max(svgDimensions.width, svgDimensions.height);
+        const scaleX = svgDimensions.width / maxDimension;
+        const scaleY = svgDimensions.height / maxDimension;
+        
+        // 中央配置のためのオフセット計算
+        const offsetX = (1 - scaleX) / 2;
+        const offsetY = (1 - scaleY) / 2;
+        
+        if (usePercentage) {
+          const xPercent = ((x / svgDimensions.width) * scaleX + offsetX) * 100;
+          const yPercent = ((y / svgDimensions.height) * scaleY + offsetY) * 100;
+          return `${xPercent.toFixed(2)}% ${yPercent.toFixed(2)}%`;
+        } else {
+          normalizedX = ((x / svgDimensions.width) * scaleX + offsetX) * 100;
+          normalizedY = ((y / svgDimensions.height) * scaleY + offsetY) * 100;
+          return `${normalizedX.toFixed(2)}px ${normalizedY.toFixed(2)}px`;
+        }
       } else {
-        return `${x}px ${y}px`;
+        if (usePercentage) {
+          const xPercent = (x / svgDimensions.width * 100).toFixed(2);
+          const yPercent = (y / svgDimensions.height * 100).toFixed(2);
+          return `${xPercent}% ${yPercent}%`;
+        } else {
+          return `${x}px ${y}px`;
+        }
       }
     };
 
@@ -173,6 +198,32 @@ function App() {
           }
           break;
 
+        case "q":
+          // 4つのパラメータごとに2次ベジェ曲線を処理
+          for (let i = 0; i < params.length; i += 4) {
+            if (i + 3 < params.length) {
+              if (command === "Q") {
+                const cpx = params[i], cpy = params[i + 1];
+                currentX = params[i + 2];
+                currentY = params[i + 3];
+                shapeParts.push(
+                  `curve to ${formatCoordinate(currentX, currentY)} with ${formatCoordinate(cpx, cpy)}`,
+                );
+              } else {
+                const cpx = currentX + params[i];
+                const cpy = currentY + params[i + 1];
+                const endX = currentX + params[i + 2];
+                const endY = currentY + params[i + 3];
+                currentX = endX;
+                currentY = endY;
+                shapeParts.push(
+                  `curve to ${formatCoordinate(currentX, currentY)} with ${formatCoordinate(cpx, cpy)}`,
+                );
+              }
+            }
+          }
+          break;
+
         case "z":
           shapeParts.push("close");
           pathHasExplicitClose = true;
@@ -192,14 +243,104 @@ function App() {
     return `shape(${shapeParts.join(", ")})`;
   };
 
+  const convertBasicShapeToPath = (element: Element): string | null => {
+    const tagName = element.tagName.toLowerCase();
+    
+    switch (tagName) {
+      case 'rect': {
+        const x = parseFloat(element.getAttribute('x') || '0');
+        const y = parseFloat(element.getAttribute('y') || '0');
+        const width = parseFloat(element.getAttribute('width') || '0');
+        const height = parseFloat(element.getAttribute('height') || '0');
+        const rx = parseFloat(element.getAttribute('rx') || '0');
+        const ry = parseFloat(element.getAttribute('ry') || rx.toString());
+        
+        if (rx === 0 && ry === 0) {
+          // 角丸なしの長方形
+          return `M${x},${y} L${x + width},${y} L${x + width},${y + height} L${x},${y + height} Z`;
+        } else {
+          // 角丸長方形（簡略化）
+          const r = Math.min(rx, ry, width / 2, height / 2);
+          return `M${x + r},${y} L${x + width - r},${y} Q${x + width},${y} ${x + width},${y + r} L${x + width},${y + height - r} Q${x + width},${y + height} ${x + width - r},${y + height} L${x + r},${y + height} Q${x},${y + height} ${x},${y + height - r} L${x},${y + r} Q${x},${y} ${x + r},${y} Z`;
+        }
+      }
+      
+      case 'circle': {
+        const cx = parseFloat(element.getAttribute('cx') || '0');
+        const cy = parseFloat(element.getAttribute('cy') || '0');
+        const r = parseFloat(element.getAttribute('r') || '0');
+        
+        // 円を4つの3次ベジェ曲線で近似
+        const k = 0.552284749831; // 円に近似するベジェ曲線の制御点係数
+        const kr = k * r;
+        return `M${cx},${cy - r} C${cx + kr},${cy - r} ${cx + r},${cy - kr} ${cx + r},${cy} C${cx + r},${cy + kr} ${cx + kr},${cy + r} ${cx},${cy + r} C${cx - kr},${cy + r} ${cx - r},${cy + kr} ${cx - r},${cy} C${cx - r},${cy - kr} ${cx - kr},${cy - r} ${cx},${cy - r} Z`;
+      }
+      
+      case 'ellipse': {
+        const cx = parseFloat(element.getAttribute('cx') || '0');
+        const cy = parseFloat(element.getAttribute('cy') || '0');
+        const rx = parseFloat(element.getAttribute('rx') || '0');
+        const ry = parseFloat(element.getAttribute('ry') || '0');
+        
+        const k = 0.552284749831;
+        const krx = k * rx;
+        const kry = k * ry;
+        return `M${cx},${cy - ry} C${cx + krx},${cy - ry} ${cx + rx},${cy - kry} ${cx + rx},${cy} C${cx + rx},${cy + kry} ${cx + krx},${cy + ry} ${cx},${cy + ry} C${cx - krx},${cy + ry} ${cx - rx},${cy + kry} ${cx - rx},${cy} C${cx - rx},${cy - kry} ${cx - krx},${cy - ry} ${cx},${cy - ry} Z`;
+      }
+      
+      case 'polygon': {
+        const points = element.getAttribute('points');
+        if (!points) return null;
+        
+        const coords = points.trim().split(/[\s,]+/).map(Number);
+        if (coords.length < 4) return null;
+        
+        let path = `M${coords[0]},${coords[1]}`;
+        for (let i = 2; i < coords.length; i += 2) {
+          path += ` L${coords[i]},${coords[i + 1]}`;
+        }
+        path += ' Z';
+        return path;
+      }
+      
+      case 'polyline': {
+        const points = element.getAttribute('points');
+        if (!points) return null;
+        
+        const coords = points.trim().split(/[\s,]+/).map(Number);
+        if (coords.length < 4) return null;
+        
+        let path = `M${coords[0]},${coords[1]}`;
+        for (let i = 2; i < coords.length; i += 2) {
+          path += ` L${coords[i]},${coords[i + 1]}`;
+        }
+        // polylineはデフォルトで閉じない
+        return path;
+      }
+      
+      default:
+        return null;
+    }
+  };
+
   const extractPathsFromSVG = (svgString: string): string[] => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(svgString, "image/svg+xml");
-    const pathElements = doc.querySelectorAll("path");
     const paths: string[] = [];
     
+    // path要素を処理
+    const pathElements = doc.querySelectorAll("path");
     pathElements.forEach(pathElement => {
       const pathData = pathElement.getAttribute("d");
+      if (pathData) {
+        paths.push(pathData);
+      }
+    });
+    
+    // 基本図形要素を処理
+    const shapeElements = doc.querySelectorAll("rect, circle, ellipse, polygon, polyline");
+    shapeElements.forEach(shapeElement => {
+      const pathData = convertBasicShapeToPath(shapeElement);
       if (pathData) {
         paths.push(pathData);
       }
@@ -287,20 +428,38 @@ function App() {
           Select SVG File
         </button>
         
-        <div className="unit-toggle">
-          <label>
-            <input
-              type="checkbox"
-              checked={usePercentage}
-              onChange={(e) => {
-                setUsePercentage(e.target.checked);
-                if (svgContent) {
-                  processSVG(svgContent);
-                }
-              }}
-            />
-            Use percentage units (responsive)
-          </label>
+        <div className="controls">
+          <div className="unit-toggle">
+            <label>
+              <input
+                type="checkbox"
+                checked={usePercentage}
+                onChange={(e) => {
+                  setUsePercentage(e.target.checked);
+                  if (svgContent) {
+                    processSVG(svgContent);
+                  }
+                }}
+              />
+              Use percentage units (responsive)
+            </label>
+          </div>
+          
+          <div className="aspect-toggle">
+            <label>
+              <input
+                type="checkbox"
+                checked={normalizeAspectRatio}
+                onChange={(e) => {
+                  setNormalizeAspectRatio(e.target.checked);
+                  if (svgContent) {
+                    processSVG(svgContent);
+                  }
+                }}
+              />
+              Normalize to 1:1 aspect ratio
+            </label>
+          </div>
         </div>
       </div>
 

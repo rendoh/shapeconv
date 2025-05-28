@@ -44,13 +44,22 @@ h1 {
   box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
 }
 
-.unit-toggle {
+.controls {
   margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.unit-toggle,
+.aspect-toggle {
   display: flex;
   justify-content: center;
 }
 
-.unit-toggle label {
+.unit-toggle label,
+.aspect-toggle label {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -59,7 +68,8 @@ h1 {
   cursor: pointer;
 }
 
-.unit-toggle input[type="checkbox"] {
+.unit-toggle input[type="checkbox"],
+.aspect-toggle input[type="checkbox"] {
   width: 16px;
   height: 16px;
   cursor: pointer;
