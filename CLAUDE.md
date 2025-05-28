@@ -26,20 +26,27 @@ ShapeConvは、SVGパスデータをCSS `clip-path` `shape()` 値に変換する
 ### サポートするSVGパスコマンド
 
 変換ツールは以下のSVGパスコマンドを処理します：
-- `M/m` (moveto) → `move to`
+- `M/m` (moveto) → 最初は `from`、以降は `line to`
 - `L/l` (lineto) → `line to`
 - `H/h` (水平lineto) → `line to` (計算されたY座標付き)
 - `V/v` (垂直lineto) → `line to` (計算されたX座標付き)
-- `C/c` (curveto) → `curve to ... via` (制御点付き)
+- `C/c` (curveto) → `curve to ... with ... / ...` (3次ベジェ曲線、制御点付き)
 - `Z/z` (closepath) → `close`
 
 絶対座標（大文字）と相対座標（小文字）の両方のコマンドをサポートし、適切な座標追跡を行います。
 
+### 単位オプション
+
+- **px単位**: 固定サイズでの出力
+- **%単位**: レスポンシブ対応、SVGのviewBoxまたはwidth/height属性を基準とした相対値
+
 ### UIコンポーネント
 
 - SVG検証付きファイルアップロード
+- 単位切り替えトグル（px ↔ %）
 - `dangerouslySetInnerHTML` を使用したSVGプレビュー表示
 - シンタックスハイライトとコピー機能付きコード出力
+- 実際のclip-pathが適用されたビジュアルプレビュー
 - CSS統合方法を示す使用例
 
 ## 技術スタック

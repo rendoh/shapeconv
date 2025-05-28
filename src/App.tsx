@@ -10,23 +10,32 @@ function App() {
   const [svgContent, setSvgContent] = useState<string>("");
   const [shapeResult, setShapeResult] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [usePercentage, setUsePercentage] = useState<boolean>(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const parseSVGPath = (pathData: string): PathCommand[] => {
     const commands: PathCommand[] = [];
+    
+    // パスデータの前処理：負の数の前にスペースを追加
+    let cleanedPath = pathData.replace(/([a-zA-Z])(-)/g, '$1 $2');
+    cleanedPath = cleanedPath.replace(/(\d)(-)/g, '$1 $2');
+    
     const regex = /([MmLlHhVvCcSsQqTtAaZz])([^MmLlHhVvCcSsQqTtAaZz]*)/g;
     let match;
 
-    while ((match = regex.exec(pathData)) !== null) {
+    while ((match = regex.exec(cleanedPath)) !== null) {
       const command = match[1];
       const paramString = match[2].trim();
 
-      // 数値のマッチングを改善（負の数、小数点を含む）
+      // 数値のマッチングを改善（負の数、小数点、連続した数値を含む）
+      let cleanParamString = paramString.replace(/([a-zA-Z])/g, ' $1 ').trim();
+      cleanParamString = cleanParamString.replace(/,/g, ' ').replace(/\s+/g, ' ');
+      
       const numberRegex = /-?\d*\.?\d+(?:[eE][-+]?\d+)?/g;
       const params: number[] = [];
       let numberMatch;
 
-      while ((numberMatch = numberRegex.exec(paramString)) !== null) {
+      while ((numberMatch = numberRegex.exec(cleanParamString)) !== null) {
         const num = parseFloat(numberMatch[0]);
         if (!isNaN(num)) {
           params.push(num);
@@ -39,11 +48,21 @@ function App() {
     return commands;
   };
 
-  const convertToShape = (commands: PathCommand[]): string => {
+  const convertToShape = (commands: PathCommand[], svgDimensions: { width: number; height: number }): string => {
     const shapeParts: string[] = [];
     let currentX = 0;
     let currentY = 0;
     let isFirstMove = true;
+
+    const formatCoordinate = (x: number, y: number): string => {
+      if (usePercentage) {
+        const xPercent = (x / svgDimensions.width * 100).toFixed(2);
+        const yPercent = (y / svgDimensions.height * 100).toFixed(2);
+        return `${xPercent}% ${yPercent}%`;
+      } else {
+        return `${x}px ${y}px`;
+      }
+    };
 
     for (const { command, params } of commands) {
       switch (command.toLowerCase()) {
@@ -60,10 +79,10 @@ function App() {
               }
 
               if (i === 0 && isFirstMove) {
-                shapeParts.push(`from ${currentX}px ${currentY}px`);
+                shapeParts.push(`from ${formatCoordinate(currentX, currentY)}`);
                 isFirstMove = false;
               } else {
-                shapeParts.push(`line to ${currentX}px ${currentY}px`);
+                shapeParts.push(`line to ${formatCoordinate(currentX, currentY)}`);
               }
             }
           }
@@ -80,7 +99,7 @@ function App() {
                 currentX += params[i];
                 currentY += params[i + 1];
               }
-              shapeParts.push(`line to ${currentX}px ${currentY}px`);
+              shapeParts.push(`line to ${formatCoordinate(currentX, currentY)}`);
             }
           }
           break;
@@ -93,7 +112,7 @@ function App() {
             } else {
               currentX += param;
             }
-            shapeParts.push(`line to ${currentX}px ${currentY}px`);
+            shapeParts.push(`line to ${formatCoordinate(currentX, currentY)}`);
           }
           break;
 
@@ -105,7 +124,7 @@ function App() {
             } else {
               currentY += param;
             }
-            shapeParts.push(`line to ${currentX}px ${currentY}px`);
+            shapeParts.push(`line to ${formatCoordinate(currentX, currentY)}`);
           }
           break;
 
@@ -119,17 +138,19 @@ function App() {
                 currentX = params[i + 4];
                 currentY = params[i + 5];
                 shapeParts.push(
-                  `curve to ${currentX}px ${currentY}px via ${cp1x}px ${cp1y}px ${cp2x}px ${cp2y}px`,
+                  `curve to ${formatCoordinate(currentX, currentY)} with ${formatCoordinate(cp1x, cp1y)} / ${formatCoordinate(cp2x, cp2y)}`,
                 );
               } else {
-                const cp1x = currentX + params[i],
-                  cp1y = currentY + params[i + 1];
-                const cp2x = currentX + params[i + 2],
-                  cp2y = currentY + params[i + 3];
-                currentX += params[i + 4];
-                currentY += params[i + 5];
+                const cp1x = currentX + params[i];
+                const cp1y = currentY + params[i + 1];
+                const cp2x = currentX + params[i + 2];
+                const cp2y = currentY + params[i + 3];
+                const endX = currentX + params[i + 4];
+                const endY = currentY + params[i + 5];
+                currentX = endX;
+                currentY = endY;
                 shapeParts.push(
-                  `curve to ${currentX}px ${currentY}px via ${cp1x}px ${cp1y}px ${cp2x}px ${cp2y}px`,
+                  `curve to ${formatCoordinate(currentX, currentY)} with ${formatCoordinate(cp1x, cp1y)} / ${formatCoordinate(cp2x, cp2y)}`,
                 );
               }
             }
@@ -150,6 +171,27 @@ function App() {
     const doc = parser.parseFromString(svgString, "image/svg+xml");
     const pathElement = doc.querySelector("path");
     return pathElement?.getAttribute("d") || null;
+  };
+
+  const getSVGDimensions = (svgString: string): { width: number; height: number } => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgString, "image/svg+xml");
+    const svgElement = doc.querySelector("svg");
+    
+    if (!svgElement) return { width: 100, height: 100 };
+
+    // viewBoxから寸法を取得
+    const viewBox = svgElement.getAttribute("viewBox");
+    if (viewBox) {
+      const [, , width, height] = viewBox.split(/\s+/).map(Number);
+      return { width, height };
+    }
+
+    // width/height属性から取得
+    const width = parseFloat(svgElement.getAttribute("width") || "100");
+    const height = parseFloat(svgElement.getAttribute("height") || "100");
+    
+    return { width, height };
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -183,7 +225,9 @@ function App() {
       console.log("Original path data:", pathData);
       const commands = parseSVGPath(pathData);
       console.log("Parsed commands:", commands);
-      const shapeValue = convertToShape(commands);
+      const svgDimensions = getSVGDimensions(content);
+      console.log("SVG dimensions:", svgDimensions);
+      const shapeValue = convertToShape(commands, svgDimensions);
       setShapeResult(shapeValue);
     } catch (err) {
       setError("Error processing SVG: " + (err as Error).message);
@@ -209,6 +253,22 @@ function App() {
         <button onClick={() => fileInputRef.current?.click()}>
           Select SVG File
         </button>
+        
+        <div className="unit-toggle">
+          <label>
+            <input
+              type="checkbox"
+              checked={usePercentage}
+              onChange={(e) => {
+                setUsePercentage(e.target.checked);
+                if (svgContent) {
+                  processSVG(svgContent);
+                }
+              }}
+            />
+            Use percentage units (responsive)
+          </label>
+        </div>
       </div>
 
       {error && (
