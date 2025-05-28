@@ -55,3 +55,4 @@ ShapeConvは、SVGパスデータをCSS `clip-path` `shape()` 値に変換する
 - **Vite** ビルドツールと開発サーバー
 - **ESLint** コード品質管理
 - 純粋CSS（外部UIライブラリなし）
+

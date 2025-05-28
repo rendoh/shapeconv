@@ -48,11 +48,13 @@ function App() {
     return commands;
   };
 
-  const convertToShape = (commands: PathCommand[], svgDimensions: { width: number; height: number }): string => {
+  const convertToShape = (pathDataArray: string[], svgDimensions: { width: number; height: number }): string => {
     const shapeParts: string[] = [];
     let currentX = 0;
     let currentY = 0;
     let isFirstMove = true;
+    let subpathStartX = 0;
+    let subpathStartY = 0;
 
     const formatCoordinate = (x: number, y: number): string => {
       if (usePercentage) {
@@ -64,10 +66,16 @@ function App() {
       }
     };
 
-    for (const { command, params } of commands) {
+    // 複数のパスデータを処理
+    for (let pathIndex = 0; pathIndex < pathDataArray.length; pathIndex++) {
+      const pathData = pathDataArray[pathIndex];
+      const commands = parseSVGPath(pathData);
+      let pathHasExplicitClose = false;
+
+      for (const { command, params } of commands) {
       switch (command.toLowerCase()) {
         case "m":
-          // 最初の座標ペアはfrom、以降はlineto
+          // 最初の座標ペアはfrom/move to、以降はlineto
           for (let i = 0; i < params.length; i += 2) {
             if (i + 1 < params.length) {
               if (command === "M") {
@@ -78,9 +86,17 @@ function App() {
                 currentY += params[i + 1];
               }
 
-              if (i === 0 && isFirstMove) {
-                shapeParts.push(`from ${formatCoordinate(currentX, currentY)}`);
-                isFirstMove = false;
+              if (i === 0) {
+                // 新しいサブパスの開始
+                if (isFirstMove) {
+                  shapeParts.push(`from ${formatCoordinate(currentX, currentY)}`);
+                  isFirstMove = false;
+                } else {
+                  // 前のパスが明示的に閉じられていない場合の新しいサブパス
+                  shapeParts.push(`move to ${formatCoordinate(currentX, currentY)}`);
+                }
+                subpathStartX = currentX;
+                subpathStartY = currentY;
               } else {
                 shapeParts.push(`line to ${formatCoordinate(currentX, currentY)}`);
               }
@@ -159,18 +175,37 @@ function App() {
 
         case "z":
           shapeParts.push("close");
+          pathHasExplicitClose = true;
+          // Z コマンドは現在位置をサブパス開始位置に戻す
+          currentX = subpathStartX;
+          currentY = subpathStartY;
           break;
+      }
+      }
+
+      // パスが明示的に閉じられていない場合、暗黙的にcloseを追加
+      if (!pathHasExplicitClose && commands.length > 0) {
+        shapeParts.push("close");
       }
     }
 
     return `shape(${shapeParts.join(", ")})`;
   };
 
-  const extractPathFromSVG = (svgString: string): string | null => {
+  const extractPathsFromSVG = (svgString: string): string[] => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(svgString, "image/svg+xml");
-    const pathElement = doc.querySelector("path");
-    return pathElement?.getAttribute("d") || null;
+    const pathElements = doc.querySelectorAll("path");
+    const paths: string[] = [];
+    
+    pathElements.forEach(pathElement => {
+      const pathData = pathElement.getAttribute("d");
+      if (pathData) {
+        paths.push(pathData);
+      }
+    });
+    
+    return paths;
   };
 
   const getSVGDimensions = (svgString: string): { width: number; height: number } => {
@@ -215,19 +250,17 @@ function App() {
   const processSVG = (content: string) => {
     try {
       setError("");
-      const pathData = extractPathFromSVG(content);
+      const pathDataArray = extractPathsFromSVG(content);
 
-      if (!pathData) {
-        setError("No path element found in SVG");
+      if (pathDataArray.length === 0) {
+        setError("No path elements found in SVG");
         return;
       }
 
-      console.log("Original path data:", pathData);
-      const commands = parseSVGPath(pathData);
-      console.log("Parsed commands:", commands);
+      console.log("Original path data array:", pathDataArray);
       const svgDimensions = getSVGDimensions(content);
       console.log("SVG dimensions:", svgDimensions);
-      const shapeValue = convertToShape(commands, svgDimensions);
+      const shapeValue = convertToShape(pathDataArray, svgDimensions);
       setShapeResult(shapeValue);
     } catch (err) {
       setError("Error processing SVG: " + (err as Error).message);
